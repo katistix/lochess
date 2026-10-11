@@ -3,6 +3,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { DeleteGame, ListGames } from '../../wailsjs/go/main/App'
 import type { history } from '../../wailsjs/go/models'
 import { ConfirmButton } from '../components/ConfirmButton'
+import { errorText } from '../lib/errors'
 import { formatDate, opponentLabel, resultLabel } from '../lib/games'
 
 export const Route = createFileRoute('/history/')({
@@ -21,13 +22,13 @@ function History() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    ListGames().then(setGames).catch((e) => setError(String(e)))
+    ListGames().then(setGames).catch((e) => setError(errorText(e)))
   }, [])
 
   function remove(id: string) {
     DeleteGame(id)
       .then(() => setGames((gs) => gs?.filter((g) => g.id !== id) ?? null))
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
   }
 
   if (error) return <p className="p-8 text-red-400">{error}</p>

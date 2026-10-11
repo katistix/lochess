@@ -57,7 +57,7 @@ export function MoveList({ moves, outcome, selected, marks, onSelect, className 
         ))}
       </div>
       {outcome && outcome !== '*' && (
-        <p className="py-2 text-center font-medium text-neutral-300">{outcome}</p>
+        <p className="py-2 text-center font-medium text-neutral-300">{outcome.replace('1/2-1/2', '½-½')}</p>
       )}
     </div>
   )

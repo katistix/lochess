@@ -51,3 +51,58 @@ func TestAutoQueen(t *testing.T) {
 		t.Fatalf("expected queen on a8, got %s", fen)
 	}
 }
+
+func TestThreefoldRepetitionDraws(t *testing.T) {
+	g := New()
+	var s State
+	// Knights out and back twice: the start position occurs a third time.
+	for _, m := range []string{"g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8"} {
+		var err error
+		if s, err = g.Move(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.Outcome != "1/2-1/2" || s.Method != "Threefold repetition" {
+		t.Fatalf("expected threefold draw, got %s %s", s.Outcome, s.Method)
+	}
+}
+
+func TestPromotionChoice(t *testing.T) {
+	g := New()
+	for _, m := range []string{"a2a4", "b7b5", "a4b5", "a7a6", "b5a6", "c8b7", "a6b7", "h7h6"} {
+		if _, err := g.Move(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := g.State()
+	// b8 is blocked by the knight and c8 is empty, so only bxa8 promotes.
+	if strings.Join(s.Promotions, ",") != "b7a8" {
+		t.Fatalf("promotions: %v", s.Promotions)
+	}
+	if s, _ = g.Move("b7a8n"); s.FEN[:1] != "N" {
+		t.Fatalf("expected knight on a8: %s", s.FEN)
+	}
+}
+
+func TestTakebackAndLoad(t *testing.T) {
+	g := New()
+	g.Move("e2e4")
+	g.Move("e7e5")
+	s, err := g.Takeback(2)
+	if err != nil || len(s.Moves) != 0 || s.Turn != "white" {
+		t.Fatalf("takeback: %v %+v", err, s)
+	}
+	if _, err := g.Takeback(1); err == nil {
+		t.Fatal("took back from empty game")
+	}
+	s, err = g.Load([]string{"d2d4", "d7d5"})
+	if err != nil || strings.Join(s.Moves, " ") != "d4 d5" {
+		t.Fatalf("load: %v %+v", err, s)
+	}
+	if _, err := g.Load([]string{"d2d4", "d2d4"}); err == nil {
+		t.Fatal("loaded illegal moves")
+	}
+	if s := g.State(); strings.Join(s.Moves, " ") != "d4 d5" {
+		t.Fatalf("failed load changed game: %v", s.Moves)
+	}
+}

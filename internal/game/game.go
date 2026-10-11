@@ -19,6 +19,9 @@ type State struct {
 	Outcome  string              `json:"outcome"` // "*", "1-0", "0-1", "1/2-1/2"
 	Method   string              `json:"method"`  // e.g. "Checkmate", "Stalemate"; empty while ongoing
 	Moves    []string            `json:"moves"`   // move history in SAN, e.g. ["e4", "e5", "Nf3"]
+	// Promotions lists from+to pairs (e.g. "e7e8") that promote a pawn, so the
+	// frontend knows when to ask which piece to promote to.
+	Promotions []string `json:"promotions"`
 }
 
 // Ply is one half-move of a finished or ongoing game.
@@ -31,6 +34,19 @@ type Ply struct {
 
 // StartFEN is the standard initial position.
 const StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+// methodNames are the display names for how a game ended.
+var methodNames = map[chess.Method]string{
+	chess.Checkmate:            "Checkmate",
+	chess.Resignation:          "Resignation",
+	chess.DrawOffer:            "Agreement",
+	chess.Stalemate:            "Stalemate",
+	chess.ThreefoldRepetition:  "Threefold repetition",
+	chess.FivefoldRepetition:   "Fivefold repetition",
+	chess.FiftyMoveRule:        "50-move rule",
+	chess.SeventyFiveMoveRule:  "75-move rule",
+	chess.InsufficientMaterial: "Insufficient material",
+}
 
 // Game is safe for concurrent use; Wails may call bound methods from multiple goroutines.
 type Game struct {
@@ -73,17 +89,76 @@ func (g *Game) Resign(color string) State {
 func (g *Game) Move(uci string) (State, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if err := g.move(uci); err != nil {
+		return g.state(), err
+	}
+	return g.state(), nil
+}
+
+// Load replaces the game with a new one built from UCI moves.
+func (g *Game) Load(moves []string) (State, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.replay(moves)
+}
+
+// Takeback undoes the last n half-moves.
+func (g *Game) Takeback(n int) (State, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	moves := g.g.Moves()
+	if n < 1 || n > len(moves) {
+		return g.state(), fmt.Errorf("cannot take back %d of %d moves", n, len(moves))
+	}
+	uci := make([]string, len(moves)-n)
+	for i := range uci {
+		uci[i] = moves[i].String()
+	}
+	return g.replay(uci)
+}
+
+// AgreeDraw ends an ongoing game as a draw by agreement.
+func (g *Game) AgreeDraw() (State, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.g.Draw(chess.DrawOffer); err != nil {
+		return g.state(), err
+	}
+	return g.state(), nil
+}
+
+// replay rebuilds the game from scratch. On error the previous game is kept.
+func (g *Game) replay(moves []string) (State, error) {
+	prev := g.g
+	g.g = chess.NewGame()
+	for _, uci := range moves {
+		if err := g.move(uci); err != nil {
+			g.g = prev
+			return g.state(), err
+		}
+	}
+	return g.state(), nil
+}
+
+func (g *Game) move(uci string) error {
 	if len(uci) == 4 && g.isPromotion(uci) {
 		uci += "q"
 	}
 	m, err := chess.UCINotation{}.Decode(g.g.Position(), uci)
 	if err != nil {
-		return g.state(), fmt.Errorf("invalid move %q: %w", uci, err)
+		return fmt.Errorf("invalid move %q: %w", uci, err)
 	}
 	if err := g.g.Move(m); err != nil {
-		return g.state(), fmt.Errorf("illegal move %q: %w", uci, err)
+		return fmt.Errorf("illegal move %q: %w", uci, err)
 	}
-	return g.state(), nil
+	// The library only ends games automatically at fivefold repetition and the
+	// 75-move rule; like lichess, end them at threefold and 50 moves instead.
+	for _, method := range g.g.EligibleDraws() {
+		if method == chess.ThreefoldRepetition || method == chess.FiftyMoveRule {
+			return g.g.Draw(method)
+		}
+	}
+	return nil
 }
 
 // Plies returns every move played so far with the position after it.
@@ -123,12 +198,13 @@ func (g *Game) isPromotion(uci string) bool {
 func (g *Game) state() State {
 	pos := g.g.Position()
 	s := State{
-		FEN:      pos.String(),
-		Turn:     "white",
-		Dests:    map[string][]string{},
-		LastMove: []string{},
-		Outcome:  string(g.g.Outcome()),
-		Moves:    g.san(),
+		FEN:        pos.String(),
+		Turn:       "white",
+		Dests:      map[string][]string{},
+		LastMove:   []string{},
+		Outcome:    string(g.g.Outcome()),
+		Moves:      g.san(),
+		Promotions: []string{},
 	}
 	if pos.Turn() == chess.Black {
 		s.Turn = "black"
@@ -138,13 +214,16 @@ func (g *Game) state() State {
 			from := m.S1().String()
 			to := m.S2().String()
 			// Promotions appear once per piece type; the board only needs the squares.
-			if m.Promo() != chess.NoPieceType && m.Promo() != chess.Queen {
-				continue
+			if m.Promo() != chess.NoPieceType {
+				if m.Promo() != chess.Queen {
+					continue
+				}
+				s.Promotions = append(s.Promotions, from+to)
 			}
 			s.Dests[from] = append(s.Dests[from], to)
 		}
 	} else {
-		s.Method = g.g.Method().String()
+		s.Method = methodNames[g.g.Method()]
 	}
 	if moves := g.g.Moves(); len(moves) > 0 {
 		last := moves[len(moves)-1]

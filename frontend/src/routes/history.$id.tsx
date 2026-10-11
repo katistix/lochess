@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Color, Key } from '@lichess-org/chessground/types'
 import { AnalyzeGame, DeleteGame, GetGame } from '../../wailsjs/go/main/App'
@@ -9,6 +9,9 @@ import { Board } from '../components/Board'
 import { ConfirmButton } from '../components/ConfirmButton'
 import { GradeBadge, SquareBadge } from '../components/GradeBadge'
 import { MoveList, type MoveMark } from '../components/MoveList'
+import { errorText } from '../lib/errors'
+import { useSettings } from '../lib/settings'
+import { moveSound, playSound } from '../lib/sound'
 import { formatDate, opponentLabel } from '../lib/games'
 import { GRADES, GRADE_ORDER, moveLabel } from '../lib/grades'
 
@@ -36,13 +39,22 @@ function Review() {
         setGame(g)
         if (!g.analysis) return AnalyzeGame(id).then(setGame)
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
       .finally(() => setProgress(null))
     return off
   }, [id])
 
   const total = game?.plies.length ?? 0
-  const go = useCallback((p: number) => setPly(Math.max(0, Math.min(total, p))), [total])
+  const { settings } = useSettings()
+  const go = useCallback(
+    (p: number) => {
+      const next = Math.max(0, Math.min(total, p))
+      // Stepping forward one move sounds like playing it, as on lichess.
+      if (game && next === ply + 1) playSound(moveSound(game.plies[next - 1].san), settings)
+      setPly(next)
+    },
+    [total, game, ply, settings],
+  )
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,7 +86,16 @@ function Review() {
     [analysis],
   )
 
-  if (error && !game) return <p className="p-8 text-red-400">{error}</p>
+  if (error && !game) {
+    return (
+      <div className="p-8">
+        <p className="text-neutral-300">{error}</p>
+        <Link to="/history" className="mt-2 inline-block text-sm text-neutral-400 underline underline-offset-4">
+          Back to history
+        </Link>
+      </div>
+    )
+  }
   if (!game) return null
 
   const p = ply > 0 ? game.plies[ply - 1] : undefined
@@ -84,7 +105,7 @@ function Review() {
   function remove() {
     DeleteGame(id)
       .then(() => navigate({ to: '/history' }))
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
   }
 
   return (
@@ -133,7 +154,7 @@ function Review() {
 
         <MoveList
           moves={game.plies.map((x) => x.san)}
-          outcome={game.result.replace('1/2-1/2', '½-½')}
+          outcome={game.result}
           selected={ply - 1}
           marks={marks}
           onSelect={(i) => go(i + 1)}

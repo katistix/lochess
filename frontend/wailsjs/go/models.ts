@@ -103,6 +103,7 @@ export namespace game {
 	    outcome: string;
 	    method: string;
 	    moves: string[];
+	    promotions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new State(source);
@@ -118,6 +119,7 @@ export namespace game {
 	        this.outcome = source["outcome"];
 	        this.method = source["method"];
 	        this.moves = source["moves"];
+	        this.promotions = source["promotions"];
 	    }
 	}
 
@@ -283,6 +285,29 @@ export namespace match {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace settings {
+	
+	export class Settings {
+	    board: string;
+	    pieces: string;
+	    sound: boolean;
+	    volume: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.board = source["board"];
+	        this.pieces = source["pieces"];
+	        this.sound = source["sound"];
+	        this.volume = source["volume"];
+	    }
 	}
 
 }

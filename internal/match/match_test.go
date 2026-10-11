@@ -2,6 +2,8 @@ package match
 
 import (
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"lochess/internal/engine"
@@ -9,7 +11,7 @@ import (
 )
 
 func TestBotGame(t *testing.T) {
-	m := New(nil)
+	m := New(nil, "")
 	defer m.Close()
 	s, err := m.Start(Options{Mode: ModeBot, Level: 1, Color: "black"})
 	if errors.Is(err, engine.ErrNotFound) {
@@ -37,7 +39,7 @@ func TestBotGame(t *testing.T) {
 }
 
 func TestPhases(t *testing.T) {
-	m := New(nil)
+	m := New(nil, "")
 	if s := m.State(); s.Phase != PhaseSetup {
 		t.Fatalf("new match: %s", s.Phase)
 	}
@@ -59,7 +61,7 @@ func TestPhases(t *testing.T) {
 
 func TestSavesFinishedGame(t *testing.T) {
 	var saved []history.Game
-	m := New(func(g history.Game) error { saved = append(saved, g); return nil })
+	m := New(func(g history.Game) error { saved = append(saved, g); return nil }, "")
 
 	m.Start(Options{Mode: ModeLocal})
 	m.Resign() // no moves: aborted, not saved
@@ -82,7 +84,7 @@ func TestSavesFinishedGame(t *testing.T) {
 }
 
 func TestLocalNeverBot(t *testing.T) {
-	m := New(nil)
+	m := New(nil, "")
 	s, err := m.Start(Options{Mode: ModeLocal})
 	if err != nil || s.BotToMove {
 		t.Fatalf("%v %+v", err, s)
@@ -92,5 +94,39 @@ func TestLocalNeverBot(t *testing.T) {
 	}
 	if s := m.State(); s.BotToMove {
 		t.Fatal("local mode asked for bot move")
+	}
+}
+
+func TestResumeAfterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "current.json")
+	m := New(nil, path)
+	m.Start(Options{Mode: ModeLocal})
+	m.Move("e2e4")
+	m.Move("e7e5")
+
+	resumed := New(nil, path)
+	s := resumed.State()
+	if s.Phase != PhasePlaying || strings.Join(s.Game.Moves, " ") != "e4 e5" {
+		t.Fatalf("resumed: %+v", s)
+	}
+	resumed.Resign()
+	if s := New(nil, path).State(); s.Phase != PhaseSetup {
+		t.Fatalf("finished game was resumed: %+v", s)
+	}
+}
+
+func TestTakebackAndDraw(t *testing.T) {
+	m := New(nil, "")
+	m.Start(Options{Mode: ModeLocal})
+	if _, err := m.Takeback(); err == nil {
+		t.Fatal("took back with no moves")
+	}
+	m.Move("e2e4")
+	if s, err := m.Takeback(); err != nil || len(s.Game.Moves) != 0 {
+		t.Fatalf("local takeback: %v %+v", err, s)
+	}
+	s, err := m.AgreeDraw()
+	if err != nil || s.Phase != PhaseOver || s.Game.Outcome != "1/2-1/2" {
+		t.Fatalf("draw: %v %+v", err, s)
 	}
 }

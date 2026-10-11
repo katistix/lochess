@@ -4,6 +4,7 @@ package review
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"lochess/internal/analysis"
@@ -32,10 +33,13 @@ func (s *Service) Analyze(ctx context.Context, id string, progress func(done, to
 	if err != nil || g.Analysis != nil {
 		return g, err
 	}
-	if err := s.startEngine(); err != nil {
-		return g, err
+	a, err := s.run(ctx, g, progress)
+	if err != nil {
+		// The engine may have crashed or hung: restart it and try once more.
+		log.Printf("analysis failed, restarting engine: %v", err)
+		s.stopEngine()
+		a, err = s.run(ctx, g, progress)
 	}
-	a, err := analysis.Run(ctx, s.eng, g.Plies, progress)
 	if err != nil {
 		return g, fmt.Errorf("analyse: %w", err)
 	}
@@ -46,6 +50,13 @@ func (s *Service) Analyze(ctx context.Context, id string, progress func(done, to
 	a.KeyMoments = a.FindKeyMoments(colors, 3)
 	g.Analysis = a
 	return g, s.store.Save(g)
+}
+
+func (s *Service) run(ctx context.Context, g history.Game, progress func(done, total int)) (*analysis.Analysis, error) {
+	if err := s.startEngine(); err != nil {
+		return nil, err
+	}
+	return analysis.Run(ctx, s.eng, g.Plies, progress)
 }
 
 func (s *Service) startEngine() error {
@@ -73,6 +84,10 @@ func (s *Service) startEngine() error {
 func (s *Service) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.stopEngine()
+}
+
+func (s *Service) stopEngine() {
 	if s.eng != nil {
 		s.eng.Close()
 		s.eng = nil

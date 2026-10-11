@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"lochess/internal/engine"
@@ -39,7 +40,18 @@ type Bot struct {
 	eng *engine.Engine
 }
 
+// moveTimeout bounds one attempt at a move; the slowest level searches for 1s.
+const moveTimeout = 10 * time.Second
+
 func New() (*Bot, error) {
+	eng, err := start()
+	if err != nil {
+		return nil, err
+	}
+	return &Bot{eng: eng}, nil
+}
+
+func start() (*engine.Engine, error) {
 	path, err := engine.Find()
 	if err != nil {
 		return nil, err
@@ -59,24 +71,53 @@ func New() (*Bot, error) {
 			return nil, err
 		}
 	}
-	return &Bot{eng: eng}, nil
+	return eng, nil
 }
 
 // NewGame clears the engine's state from any previous game.
-func (b *Bot) NewGame(ctx context.Context) error {
-	return b.eng.NewGame(ctx)
+func (b *Bot) NewGame() error {
+	return b.retry(func(ctx context.Context) error {
+		return b.eng.NewGame(ctx)
+	})
 }
 
 // Move returns the bot's move in UCI notation for the position at the given level.
-func (b *Bot) Move(ctx context.Context, fen string, level int) (string, error) {
+func (b *Bot) Move(fen string, level int) (string, error) {
 	if level < MinLevel || level > MaxLevel {
 		return "", fmt.Errorf("level %d out of range %d-%d", level, MinLevel, MaxLevel)
 	}
 	l := Levels[level]
-	if err := b.eng.SetOption("Skill Level", l.Skill); err != nil {
-		return "", err
+	var uci string
+	err := b.retry(func(ctx context.Context) error {
+		if err := b.eng.SetOption("Skill Level", l.Skill); err != nil {
+			return err
+		}
+		var err error
+		uci, err = b.eng.BestMove(ctx, fen, fmt.Sprintf("movetime %d depth %d", l.MoveTime.Milliseconds(), l.Depth))
+		return err
+	})
+	return uci, err
+}
+
+// retry runs f; if it fails (engine crashed or hung), it restarts the engine
+// and tries once more.
+func (b *Bot) retry(f func(ctx context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), moveTimeout)
+	err := f(ctx)
+	cancel()
+	if err == nil {
+		return nil
 	}
-	return b.eng.BestMove(ctx, fen, fmt.Sprintf("movetime %d depth %d", l.MoveTime.Milliseconds(), l.Depth))
+	log.Printf("bot engine failed, restarting: %v", err)
+	b.eng.Close()
+	eng, startErr := start()
+	if startErr != nil {
+		return fmt.Errorf("%w (restart failed: %v)", err, startErr)
+	}
+	b.eng = eng
+	ctx, cancel = context.WithTimeout(context.Background(), moveTimeout)
+	defer cancel()
+	return f(ctx)
 }
 
 func (b *Bot) Close() error {

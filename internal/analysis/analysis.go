@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/notnil/chess"
 
@@ -50,6 +51,10 @@ type Analysis struct {
 // players this app is for; keeps a full game under ~15 seconds.
 const SearchArgs = "depth 14 movetime 400"
 
+// searchTimeout bounds one position, so a hung engine fails instead of
+// stalling the review forever.
+const searchTimeout = 5 * time.Second
+
 // Run analyses every position of the game. progress is called after each one.
 func Run(ctx context.Context, eng *engine.Engine, plies []game.Ply, progress func(done, total int)) (*Analysis, error) {
 	fens := make([]string, 0, len(plies)+1)
@@ -61,7 +66,9 @@ func Run(ctx context.Context, eng *engine.Engine, plies []game.Ply, progress fun
 	evals := make([]Eval, len(fens))
 	best := make([]string, len(fens))
 	for i, fen := range fens {
-		info, err := eng.Search(ctx, fen, SearchArgs)
+		sctx, cancel := context.WithTimeout(ctx, searchTimeout)
+		info, err := eng.Search(sctx, fen, SearchArgs)
+		cancel()
 		if err != nil {
 			return nil, fmt.Errorf("position %d: %w", i, err)
 		}
