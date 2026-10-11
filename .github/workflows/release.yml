@@ -1,48 +1,122 @@
-# Builds lochess.app for macOS (Apple Silicon + Intel) when a version tag is
-# pushed, and publishes it as a GitHub Release that install.sh downloads.
+# Builds lochess for macOS, Linux and Windows with the chess engine bundled.
+# Pull requests build and test every platform; pushing a v* tag also
+# publishes the artifacts as a GitHub Release, which the installers download.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  macos:
-    runs-on: macos-15
+  build:
+    name: build (${{ matrix.engine }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            engine: darwin
+            platform: darwin/universal
+            tags: bundled_engine
+          # 22.04 keeps the glibc requirement low so the binary runs on older distros.
+          - os: ubuntu-22.04
+            engine: linux
+            platform: linux/amd64
+            tags: webkit2_41 bundled_engine
+          - os: windows-latest
+            engine: windows
+            platform: windows/amd64
+            tags: bundled_engine
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.20.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install NSIS (Windows installer)
+        if: runner.os == 'Windows'
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 
+      - name: Fetch engine
+        run: scripts/fetch-engine.sh ${{ matrix.engine }}
+
       - name: Test
-        run: go test ./...
+        # Runs the engine tests against the bundled engine on every platform.
+        run: go test -tags bundled_engine ./internal/...
 
       - name: Build
-        run: wails build -clean -platform darwin/universal
+        run: |
+          extra=""
+          [ "${{ runner.os }}" = "Windows" ] && extra="-nsis"
+          wails build -clean -platform ${{ matrix.platform }} -tags "${{ matrix.tags }}" $extra
 
       - name: Package
-        # ditto keeps the bundle's symlinks and signature intact.
-        run: ditto -c -k --keepParent build/bin/lochess.app lochess-macos.zip
+        run: |
+          mkdir -p dist
+          case "${{ matrix.engine }}" in
+            darwin)
+              # ditto keeps the bundle's symlinks and signature intact.
+              ditto -c -k --keepParent build/bin/lochess.app dist/lochess-macos.zip ;;
+            linux)
+              mkdir -p stage/lochess
+              cp build/bin/lochess build/linux/lochess.desktop LICENSE stage/lochess/
+              cp build/appicon.png stage/lochess/lochess.png
+              tar -C stage -czf dist/lochess-linux-amd64.tar.gz lochess ;;
+            windows)
+              mkdir -p stage
+              cp build/bin/lochess.exe LICENSE stage/
+              (cd stage && 7z a -tzip ../dist/lochess-windows-amd64.zip . >/dev/null)
+              cp build/bin/lochess-amd64-installer.exe dist/lochess-windows-amd64-setup.exe ;;
+          esac
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lochess-${{ matrix.engine }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" lochess-macos.zip \
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "lochess $GITHUB_REF_NAME" --generate-notes

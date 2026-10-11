@@ -158,24 +158,6 @@ func parseScore(fields []string, info *Info) {
 	}
 }
 
-// Find locates a Fairy-Stockfish binary.
-func Find() (string, error) {
-	for _, p := range searchPaths {
-		if path, err := exec.LookPath(p); err == nil {
-			return path, nil
-		}
-	}
-	return "", ErrNotFound
-}
-
-// searchPaths are tried in order. GUI apps launched from Finder don't inherit
-// the shell PATH, so the Homebrew locations are listed explicitly.
-var searchPaths = []string{
-	"fairy-stockfish",
-	"/opt/homebrew/bin/fairy-stockfish",
-	"/usr/local/bin/fairy-stockfish",
-}
-
 // ErrNotFound means no Fairy-Stockfish binary could be located.
 var ErrNotFound = errors.New("fairy-stockfish not found (install with: brew install fairy-stockfish)")
 
