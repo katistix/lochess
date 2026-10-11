@@ -2,6 +2,26 @@
 
 **lochess** is a local chess coach based on lichess and stockfish. it is written in go + wails.
 
+## Install (macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/katistix/lochess/main/install.sh | sh
+```
+
+This installs `lochess.app` into `/Applications` (or `~/Applications`), plus
+[Fairy-Stockfish](https://fairy-stockfish.github.io/) via Homebrew if you have it — the engine
+behind the bot levels and game analysis. Run the same command again to update.
+
+To uninstall: `rm -rf /Applications/lochess.app ~/Library/Application\ Support/lochess`
+
+## Releasing
+
+Push a version tag; GitHub Actions builds a universal (Apple Silicon + Intel) app and publishes it:
+
+```bash
+git tag -a v0.1.1 -m "lochess v0.1.1" && git push origin v0.1.1
+```
+
 ## Development
 
 Requires Go, Node, pnpm and the [Wails v2 CLI](https://wails.io/docs/gettingstarted/installation).
@@ -29,3 +49,9 @@ wails build   # produce build/bin/lochess.app
 - `frontend/src/assets/sounds/` — move, capture and notify sounds from Kenney, CC0 (see `CREDITS.md`)
 - `frontend/wailsjs/` — generated Go bindings (do not edit)
 - `build/` — platform packaging assets
+- `install.sh`, `.github/workflows/release.yml` — one-line installer and the tag-triggered release build
+
+## License
+
+[GPL-3.0-or-later](LICENSE). Piece sets and sounds keep their own licences; see the `CREDITS.md`
+files under `frontend/src/assets/`.

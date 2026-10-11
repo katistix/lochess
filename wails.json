@@ -9,5 +9,11 @@
   "author": {
     "name": "katistix",
     "email": "2018.tpg@gmail.com"
+  },
+  "info": {
+    "productName": "lochess",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright \u00a9 2026 katistix. Licensed under GPL-3.0-or-later.",
+    "comments": "Local chess coach"
   }
 }

@@ -1,0 +1,48 @@
+# Builds lochess.app for macOS (Apple Silicon + Intel) when a version tag is
+# pushed, and publishes it as a GitHub Release that install.sh downloads.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: wails build -clean -platform darwin/universal
+
+      - name: Package
+        # ditto keeps the bundle's symlinks and signature intact.
+        run: ditto -c -k --keepParent build/bin/lochess.app lochess-macos.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" lochess-macos.zip \
+            --title "lochess $GITHUB_REF_NAME" --generate-notes
