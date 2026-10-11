@@ -1,6 +1,9 @@
 package game
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestOpeningMoves(t *testing.T) {
 	g := New()
@@ -31,6 +34,9 @@ func TestFoolsMate(t *testing.T) {
 	}
 	if s.Outcome != "0-1" || s.Method != "Checkmate" || !s.Check || len(s.Dests) != 0 {
 		t.Fatalf("fool's mate: %+v", s)
+	}
+	if got := strings.Join(s.Moves, " "); got != "f3 e5 g4 Qh4#" {
+		t.Fatalf("SAN history: %q", got)
 	}
 }
 

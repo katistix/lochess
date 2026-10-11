@@ -1,57 +1,246 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { GameState, Move, NewGame } from '../../wailsjs/go/main/App'
-import type { game } from '../../wailsjs/go/models'
+import type { Color } from '@lichess-org/chessground/types'
+import { BotMove, GameState, Move, NewGame, Resign, Setup } from '../../wailsjs/go/main/App'
+import type { match } from '../../wailsjs/go/models'
 import { Board } from '../components/Board'
+import { MoveList } from '../components/MoveList'
 
 export const Route = createFileRoute('/play')({
   component: Play,
 })
 
+type Mode = 'bot' | 'local'
+type ColorChoice = 'white' | 'random' | 'black'
+
+const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8]
+
 function Play() {
-  const [state, setState] = useState<game.State | null>(null)
+  const [state, setState] = useState<match.State | null>(null)
+  const [error, setError] = useState('')
+  const [mode, setMode] = useState<Mode>('bot')
+  const [level, setLevel] = useState(1)
+  const [color, setColor] = useState<ColorChoice>('white')
+
+  // Bumped on every new game so replies from a previous game are dropped.
+  const gen = useRef(0)
+  function accept(g: number) {
+    return (s: match.State) => {
+      if (g === gen.current) setState(s)
+    }
+  }
+  function resync(g: number) {
+    return (err: unknown) => {
+      setError(String(err))
+      GameState().then(accept(g))
+    }
+  }
 
   useEffect(() => {
     GameState().then(setState)
   }, [])
 
+  // Whenever it's the bot's turn, ask Go to play. Duplicate calls are no-ops in Go.
+  useEffect(() => {
+    if (!state?.botToMove) return
+    const g = gen.current
+    BotMove().then(accept(g)).catch(resync(g))
+  }, [state])
+
+  function startGame() {
+    const g = ++gen.current
+    setError('')
+    NewGame({ mode, level, color }).then(accept(g)).catch(resync(g))
+  }
+
   function handleMove(from: string, to: string) {
-    // On rejection, re-sync so the board snaps back to Go's position.
-    Move(from + to)
-      .then(setState)
-      .catch(() => GameState().then(setState))
+    setError('')
+    // In setup, the first move as White starts the game with the chosen options.
+    const g = state?.phase === 'setup' ? ++gen.current : gen.current
+    const started = state?.phase === 'setup' ? NewGame({ mode, level, color }) : Promise.resolve()
+    started
+      .then(() => Move(from + to))
+      .then(accept(g))
+      .catch(resync(g))
+  }
+
+  function run(call: () => Promise<match.State>) {
+    const g = ++gen.current
+    setError('')
+    call().then(accept(g)).catch(resync(g))
   }
 
   if (!state) return null
 
+  const g = state.game
+  const setup = state.phase === 'setup'
+  // In setup the board previews the chosen side; White (or 1v1) can move to start.
+  const canStartByMoving = mode === 'local' || color === 'white'
+  let orientation: Color = 'white'
+  if (setup && mode === 'bot' && color === 'black') orientation = 'black'
+  if (!setup && state.mode === 'bot') orientation = state.humanColor as Color
+
+  let movableColor: Color | undefined
+  if (setup && canStartByMoving) movableColor = 'white'
+  if (state.phase === 'playing' && !state.botToMove) movableColor = g.turn as Color
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-4">
-      <div className="aspect-square w-[min(75vh,90vw)]">
-        <Board state={state} onMove={handleMove} />
+    <div className="flex h-full items-center justify-center gap-8 p-6">
+      <div className="aspect-square w-[min(80vh,65vw)]">
+        <Board state={g} orientation={orientation} movableColor={movableColor} onMove={handleMove} />
       </div>
-      <div className="flex items-center gap-4">
-        <p className="text-sm text-neutral-300">{status(state)}</p>
+
+      <aside className="flex w-64 flex-col gap-5">
+        {setup ? (
+          <SetupPanel
+            mode={mode}
+            setMode={setMode}
+            level={level}
+            setLevel={setLevel}
+            color={color}
+            setColor={setColor}
+            hint={canStartByMoving ? 'Make a move to start, or' : undefined}
+            onStart={startGame}
+          />
+        ) : (
+          <>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-neutral-500">
+                {state.mode === 'bot' ? `Stockfish level ${state.level}` : 'Local game'}
+              </p>
+              <p className="mt-1 text-neutral-200">{status(state)}</p>
+            </div>
+            <MoveList moves={g.moves} outcome={g.outcome} />
+            {state.phase === 'playing' ? (
+              <button onClick={() => run(Resign)} className="self-start text-sm text-neutral-500 hover:text-neutral-200">
+                Resign
+              </button>
+            ) : (
+              <button
+                onClick={() => run(Setup)}
+                className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-900 hover:bg-white"
+              >
+                New game
+              </button>
+            )}
+          </>
+        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+      </aside>
+    </div>
+  )
+}
+
+function SetupPanel(props: {
+  mode: Mode
+  setMode: (m: Mode) => void
+  level: number
+  setLevel: (l: number) => void
+  color: ColorChoice
+  setColor: (c: ColorChoice) => void
+  hint?: string
+  onStart: () => void
+}) {
+  const { mode, level, color } = props
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Mode">
+        <Segmented
+          value={mode}
+          onChange={props.setMode}
+          options={[
+            ['bot', 'vs Stockfish'],
+            ['local', '1v1'],
+          ]}
+        />
+      </Field>
+
+      {mode === 'bot' && (
+        <>
+          <Field label="Level">
+            <div className="grid grid-cols-4 gap-1">
+              {LEVELS.map((l) => (
+                <button key={l} onClick={() => props.setLevel(l)} className={chip(level === l)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Play as">
+            <Segmented
+              value={color}
+              onChange={props.setColor}
+              options={[
+                ['white', 'White'],
+                ['random', 'Random'],
+                ['black', 'Black'],
+              ]}
+            />
+          </Field>
+        </>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {props.hint && <span className="text-xs text-neutral-500">{props.hint}</span>}
         <button
-          onClick={() => NewGame().then(setState)}
-          className="rounded bg-neutral-800 px-3 py-1.5 text-sm hover:bg-neutral-700"
+          onClick={props.onStart}
+          className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-900 hover:bg-white"
         >
-          New game
+          Start game
         </button>
       </div>
     </div>
   )
 }
 
-function status(s: game.State): string {
-  const side = s.turn === 'white' ? 'White' : 'Black'
-  switch (s.outcome) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-neutral-500">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (v: T) => void
+  options: [T, string][]
+}) {
+  return (
+    <div className="flex gap-1">
+      {options.map(([v, label]) => (
+        <button key={v} onClick={() => onChange(v)} className={`flex-1 ${chip(value === v)}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function chip(active: boolean) {
+  return `rounded px-2 py-1.5 text-sm ${
+    active ? 'bg-neutral-700 text-neutral-100' : 'bg-neutral-800/60 text-neutral-400 hover:text-neutral-100'
+  }`
+}
+
+function status(s: match.State): string {
+  const g = s.game
+  const side = g.turn === 'white' ? 'White' : 'Black'
+  switch (g.outcome) {
     case '*':
-      return s.check ? `${side} to move — check` : `${side} to move`
+      if (s.botToMove) return 'Stockfish is thinking…'
+      if (s.mode === 'bot') return g.check ? 'Your move — check' : 'Your move'
+      return g.check ? `${side} to move — check` : `${side} to move`
     case '1-0':
-      return `${s.method} — White wins`
+      return `${g.method} — White wins`
     case '0-1':
-      return `${s.method} — Black wins`
+      return `${g.method} — Black wins`
     default:
-      return `Draw — ${s.method}`
+      return `Draw — ${g.method}`
   }
 }

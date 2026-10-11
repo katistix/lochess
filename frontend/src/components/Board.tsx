@@ -10,12 +10,15 @@ import type { game } from '../../wailsjs/go/models'
 
 type Props = {
   state: game.State
+  orientation: Color
+  // Side the user may move; undefined locks the board (bot thinking, game over).
+  movableColor: Color | undefined
   onMove: (from: Key, to: Key) => void
 }
 
 // Thin React wrapper around chessground. It only renders the state Go sends;
 // legality comes from state.dests, never from the board itself.
-export function Board({ state, onMove }: Props) {
+export function Board({ state, orientation, movableColor, onMove }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const api = useRef<Api | null>(null)
   const onMoveRef = useRef(onMove)
@@ -34,22 +37,22 @@ export function Board({ state, onMove }: Props) {
   }, [])
 
   useEffect(() => {
-    api.current?.set(toConfig(state))
-  }, [state])
+    api.current?.set(toConfig(state, orientation, movableColor))
+  }, [state, orientation, movableColor])
 
   return <div ref={el} className="h-full w-full" />
 }
 
-function toConfig(s: game.State): Config {
+function toConfig(s: game.State, orientation: Color, movableColor: Color | undefined): Config {
   const turn = s.turn as Color
-  const over = s.outcome !== '*'
   return {
     fen: s.fen,
+    orientation,
     turnColor: turn,
     lastMove: s.lastMove as Key[],
     check: s.check ? turn : false,
     movable: {
-      color: over ? undefined : turn,
+      color: movableColor,
       dests: new Map(Object.entries(s.dests) as [Key, Key[]][]),
     },
   }
