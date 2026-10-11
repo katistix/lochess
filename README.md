@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="build/appicon.png" alt="" width="112">
+
 # lochess
 
 **A quiet, local chess app for getting better at chess.**<br>
