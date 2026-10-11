@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=lochess
+GenericName=Chess
+Comment=Play Stockfish at beginner-friendly levels and review your games
+Exec=lochess
+Icon=lochess
+Terminal=false
+Categories=Game;BoardGame;
+Keywords=chess;stockfish;
+StartupWMClass=lochess

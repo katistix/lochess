@@ -7,7 +7,7 @@ Play Stockfish at lichess's beginner-friendly levels, then see exactly where eac
 
 [![Release](https://img.shields.io/github/v/release/katistix/lochess?style=flat-square&color=81b64c)](https://github.com/katistix/lochess/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
-![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)
+![Platforms: macOS, Linux, Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square)
 
 <img src="docs/screenshots/review.png" alt="Reviewing a game: a blunder marked on the board, the best move shown as an arrow, and accuracy for both sides" width="860">
 
@@ -20,24 +20,43 @@ Play Stockfish at lichess's beginner-friendly levels, then see exactly where eac
 - **Your history, kept locally.** Every finished game is saved and analysed in the background, ready when you are.
 - **Local 1v1** on one board, with takebacks and draws by agreement.
 - **Make it yours.** 6 board colours, 12 open-licensed piece sets from lichess, and move sounds.
-- **Private by design.** No account and no network: games, analysis and settings stay on your Mac.
+- **Private by design.** No account and no network: games, analysis and settings stay on your computer.
 
 ## Install
+
+One command, no dependencies to set up: the chess engine ([Fairy-Stockfish](https://fairy-stockfish.github.io/)) ships inside the app. Run it again any time to update.
+
+**macOS** (Apple Silicon and Intel) and **Linux** (x86-64):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/katistix/lochess/main/install.sh | sh
 ```
 
-This installs **lochess.app** into `/Applications` (or `~/Applications`). If you use [Homebrew](https://brew.sh), it also installs [Fairy-Stockfish](https://fairy-stockfish.github.io/), the engine behind the bot and the analysis. Local 1v1 works without it.
+**Windows** (10 and 11), in PowerShell:
 
-Run the same command again to update. Works on Apple Silicon and Intel Macs.
+```powershell
+irm https://raw.githubusercontent.com/katistix/lochess/main/install.ps1 | iex
+```
+
+Prefer clicking? Download the [latest release](https://github.com/katistix/lochess/releases/latest): `lochess-windows-amd64-setup.exe` for Windows, `lochess-macos.zip`, or `lochess-linux-amd64.tar.gz`.
+
+<details>
+<summary>Platform notes</summary>
+
+- **macOS**: installs `lochess.app` into `/Applications` (or `~/Applications`). The app isn't notarised yet. The script avoids Gatekeeper's warning, but a zip downloaded in a browser needs right-click → **Open** the first time.
+- **Linux**: installs `~/.local/bin/lochess` and adds it to your applications menu. It needs WebKitGTK 4.1, which the script installs with apt, dnf, pacman or zypper if it's missing (this may ask for your password). It works on Ubuntu 22.04+, Debian 12+, Fedora, Arch and openSUSE.
+- **Windows**: installs to `%LOCALAPPDATA%\Programs\lochess` with a Start menu shortcut, with no admin rights needed. The setup `.exe` isn't code-signed, so SmartScreen may warn: choose **More info → Run anyway**. lochess uses Microsoft Edge WebView2, which Windows 10 and 11 already have.
+
+</details>
 
 <details>
 <summary>Uninstall</summary>
 
-```bash
-rm -rf /Applications/lochess.app ~/Library/Application\ Support/lochess
-```
+| | |
+|---|---|
+| macOS | `rm -rf /Applications/lochess.app ~/Library/Application\ Support/lochess ~/Library/Caches/lochess` |
+| Linux | `rm -rf ~/.local/bin/lochess ~/.local/share/applications/lochess.desktop ~/.local/share/icons/hicolor/256x256/apps/lochess.png ~/.config/lochess ~/.cache/lochess` |
+| Windows | Delete `%LOCALAPPDATA%\Programs\lochess`, `%APPDATA%\lochess`, `%LOCALAPPDATA%\lochess` and the Start menu shortcut, or use *Add or remove programs* if you used the setup `.exe` |
 
 </details>
 
@@ -80,11 +99,11 @@ Accuracy uses lichess's per-move formula, and *key moments* are your three costl
 
 ### Your data
 
-Everything lives in `~/Library/Application Support/lochess/`: one JSON file per game in `games/`, your settings, and an unfinished game, which is restored when you reopen the app.
+Everything lives in your user config folder (`~/Library/Application Support/lochess` on macOS, `~/.config/lochess` on Linux, `%APPDATA%\lochess` on Windows): one JSON file per game in `games/`, your settings, and an unfinished game, which is restored when you reopen the app.
 
 ## Development
 
-Requires [Go](https://go.dev), [Node](https://nodejs.org) with [pnpm](https://pnpm.io), the [Wails v2 CLI](https://wails.io/docs/gettingstarted/installation) and `brew install fairy-stockfish`.
+Requires [Go](https://go.dev), [Node](https://nodejs.org) with [pnpm](https://pnpm.io), the [Wails v2 CLI](https://wails.io/docs/gettingstarted/installation) (plus its [platform dependencies](https://wails.io/docs/gettingstarted/installation#platform-specific-dependencies)) and a Fairy-Stockfish on your `PATH` (e.g. `brew install fairy-stockfish`). Development builds use the installed engine; release builds bundle one.
 
 ```bash
 wails dev               # run with hot reload
@@ -93,6 +112,13 @@ go test ./...           # backend tests (engine tests skip without Fairy-Stockfi
 ```
 
 Set `LOCHESS_DATA_DIR` to run against a separate data folder, e.g. for testing without touching your own games.
+
+To build a self-contained app like the releases, bundle the engine first:
+
+```bash
+scripts/fetch-engine.sh darwin     # or linux / windows
+wails build -tags bundled_engine   # Linux also needs: -tags "webkit2_41 bundled_engine"
+```
 
 <details>
 <summary>Project layout</summary>
@@ -113,13 +139,15 @@ Go owns all game state and logic. The frontend only renders it and sends moves b
 | `frontend/` | Vite, React, TypeScript, Tailwind v4 and [chessground](https://github.com/lichess-org/chessground) |
 | `frontend/src/routes/` | File-based routes ([TanStack Router](https://tanstack.com/router)) |
 | `frontend/wailsjs/` | Generated Go bindings (do not edit) |
-| `install.sh`, `.github/workflows/` | One-line installer and the release build |
+| `internal/engine/bundled/` | Where `scripts/fetch-engine.sh` puts the engine for release builds |
+| `install.sh`, `install.ps1` | One-line installers (macOS + Linux, Windows) |
+| `.github/workflows/release.yml` | Builds and tests all platforms on PRs; publishes releases on tags |
 
 </details>
 
 ### Releasing
 
-Push a version tag. GitHub Actions tests, builds a universal app and publishes the release that `install.sh` downloads:
+Push a version tag. GitHub Actions bundles the engine, then tests and builds macOS (universal), Linux and Windows (zip and setup `.exe`), and publishes the release the installers download:
 
 ```bash
 git tag -a v0.1.1 -m "lochess v0.1.1" && git push origin v0.1.1
@@ -128,7 +156,7 @@ git tag -a v0.1.1 -m "lochess v0.1.1" && git push origin v0.1.1
 ## Credits
 
 - [lichess](https://lichess.org): the board ([chessground](https://github.com/lichess-org/chessground)), bot levels and piece sets. Authors and licences are in [`frontend/src/assets/pieces/CREDITS.md`](frontend/src/assets/pieces/CREDITS.md).
-- [Fairy-Stockfish](https://fairy-stockfish.github.io/), the chess engine.
+- [Fairy-Stockfish](https://fairy-stockfish.github.io/), the chess engine (GPL-3.0), bundled in releases; source at [fairy-stockfish/Fairy-Stockfish](https://github.com/fairy-stockfish/Fairy-Stockfish).
 - [notnil/chess](https://github.com/notnil/chess), the move generation and rules.
 - [Kenney](https://kenney.nl), the sounds (CC0), credited in [`frontend/src/assets/sounds/CREDITS.md`](frontend/src/assets/sounds/CREDITS.md).
 
