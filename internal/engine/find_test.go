@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -12,8 +13,12 @@ func TestExtract(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(path)
-	if err != nil || st.Mode().Perm()&0o100 == 0 {
-		t.Fatalf("extracted file not executable: %v %v", st, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows has no executable bit; elsewhere the engine must be runnable.
+	if runtime.GOOS != "windows" && st.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("extracted file not executable: %v", st.Mode())
 	}
 	// Same content reuses the file; new content goes to a new path.
 	if again, _ := extract([]byte("engine v1"), cache); again != path {

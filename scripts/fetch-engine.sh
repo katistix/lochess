@@ -42,6 +42,9 @@ case "${1:-}" in
     git -C "$src" init --quiet
     git -C "$src" fetch --quiet --depth 1 https://github.com/fairy-stockfish/Fairy-Stockfish "$COMMIT"
     git -C "$src" checkout --quiet FETCH_HEAD
+    # This 2021 Makefile passes a clang flag that current Xcode clang rejects;
+    # dropping it changes nothing else (it was the default pass manager since).
+    sed -i.orig 's/-fexperimental-new-pass-manager//' "$src/src/Makefile"
     jobs="$(sysctl -n hw.ncpu)"
     for arch in apple-silicon x86-64; do
       make -C "$src/src" clean >/dev/null
