@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"sync"
 	"time"
 
 	"lochess/internal/bot"
 	"lochess/internal/game"
+	"lochess/internal/history"
 )
 
 const (
@@ -40,6 +42,7 @@ type State struct {
 	Level      int        `json:"level"`
 	HumanColor string     `json:"humanColor"` // "white" | "black"; "white" in local mode
 	BotToMove  bool       `json:"botToMove"`  // frontend should call BotMove
+	GameID     string     `json:"gameId"`     // history ID once a finished game is saved
 }
 
 // Match is safe for concurrent use. The bot engine is started lazily on the
@@ -52,10 +55,13 @@ type Match struct {
 	level      int
 	humanColor string
 	bot        *bot.Bot
+	save       func(history.Game) error // called once when a game ends; may be nil
+	savedID    string
 }
 
-func New() *Match {
-	return &Match{game: game.New(), mode: ModeLocal, level: bot.MinLevel, humanColor: "white"}
+// New creates a match. save, if non-nil, stores each finished game.
+func New(save func(history.Game) error) *Match {
+	return &Match{game: game.New(), mode: ModeLocal, level: bot.MinLevel, humanColor: "white", save: save}
 }
 
 func (m *Match) State() State {
@@ -95,6 +101,7 @@ func (m *Match) Start(opts Options) (State, error) {
 	}
 	m.mode = opts.Mode
 	m.started = true
+	m.savedID = ""
 	return m.state(m.game.Reset()), nil
 }
 
@@ -103,6 +110,7 @@ func (m *Match) Setup() State {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.started = false
+	m.savedID = ""
 	return m.state(m.game.Reset())
 }
 
@@ -119,7 +127,7 @@ func (m *Match) Resign() (State, error) {
 	if m.mode == ModeBot {
 		loser = m.humanColor
 	}
-	return m.state(m.game.Resign(loser)), nil
+	return m.finish(m.game.Resign(loser)), nil
 }
 
 // Move plays a human move.
@@ -134,7 +142,7 @@ func (m *Match) Move(uci string) (State, error) {
 		return m.state(cur), errors.New("not your turn")
 	}
 	s, err := m.game.Move(uci)
-	return m.state(s), err
+	return m.finish(s), err
 }
 
 // BotMove lets the bot play if it is its turn; otherwise it returns the
@@ -153,7 +161,7 @@ func (m *Match) BotMove() (State, error) {
 		return m.state(s), fmt.Errorf("bot: %w", err)
 	}
 	s, err = m.game.Move(uci)
-	return m.state(s), err
+	return m.finish(s), err
 }
 
 // Close stops the engine, if running.
@@ -164,6 +172,32 @@ func (m *Match) Close() {
 		m.bot.Close()
 		m.bot = nil
 	}
+}
+
+// finish saves the game to history the first time it is seen over.
+// Games with no moves are aborted, not saved.
+func (m *Match) finish(s game.State) State {
+	if m.phase(s) == PhaseOver && m.savedID == "" && len(s.Moves) > 0 && m.save != nil {
+		now := time.Now()
+		g := history.Game{
+			ID:         history.NewID(now),
+			PlayedAt:   now,
+			Mode:       m.mode,
+			HumanColor: m.humanColor,
+			Result:     s.Outcome,
+			Method:     s.Method,
+			Plies:      m.game.Plies(),
+		}
+		if m.mode == ModeBot {
+			g.Level = m.level
+		}
+		if err := m.save(g); err != nil {
+			log.Printf("save game: %v", err)
+		} else {
+			m.savedID = g.ID
+		}
+	}
+	return m.state(s)
 }
 
 func (m *Match) phase(s game.State) string {
@@ -189,6 +223,7 @@ func (m *Match) state(s game.State) State {
 		Level:      m.level,
 		HumanColor: m.humanColor,
 		BotToMove:  m.botToMove(s),
+		GameID:     m.savedID,
 	}
 }
 

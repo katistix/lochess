@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -75,31 +76,108 @@ func (e *Engine) NewGame(ctx context.Context) error {
 	return e.ready(ctx)
 }
 
+// Info is the result of a search. Scores are from the side to move's point of view.
+type Info struct {
+	BestMove string // UCI; empty when the side to move has no legal moves
+	CP       int    // centipawns, valid when !HasMate
+	Mate     int    // moves to mate when HasMate; negative if being mated, 0 if already mated
+	HasMate  bool
+}
+
 // BestMove searches the position and returns the engine's move in UCI notation.
 // goArgs is everything after "go", e.g. "movetime 50 depth 5".
 func (e *Engine) BestMove(ctx context.Context, fen, goArgs string) (string, error) {
+	info, err := e.Search(ctx, fen, goArgs)
+	if err != nil {
+		return "", err
+	}
+	if info.BestMove == "" {
+		return "", errors.New("engine returned no move")
+	}
+	return info.BestMove, nil
+}
+
+// Search runs `go goArgs` on the position and returns the best move with
+// the score from the last reported search depth.
+func (e *Engine) Search(ctx context.Context, fen, goArgs string) (Info, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if err := e.ready(ctx); err != nil {
-		return "", err
+		return Info{}, err
 	}
 	if err := e.send("position fen " + fen); err != nil {
-		return "", err
+		return Info{}, err
 	}
 	if err := e.send("go " + goArgs); err != nil {
-		return "", err
+		return Info{}, err
 	}
-	line, err := e.waitFor(ctx, "bestmove")
-	if err != nil {
-		e.send("stop") // best effort; the engine is unusable if it never answers
-		return "", err
+	var info Info
+	for {
+		select {
+		case line, ok := <-e.lines:
+			if !ok {
+				return Info{}, errors.New("engine exited")
+			}
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			switch fields[0] {
+			case "info":
+				parseScore(fields, &info)
+			case "bestmove":
+				if len(fields) > 1 && fields[1] != "(none)" {
+					info.BestMove = fields[1]
+				}
+				return info, nil
+			}
+		case <-ctx.Done():
+			e.send("stop") // best effort; the engine is unusable if it never answers
+			return Info{}, fmt.Errorf("search: %w", ctx.Err())
+		}
 	}
-	fields := strings.Fields(line)
-	if len(fields) < 2 || fields[1] == "(none)" {
-		return "", fmt.Errorf("engine returned no move: %q", line)
-	}
-	return fields[1], nil
 }
+
+// parseScore reads "score cp N" or "score mate N" from an info line, if present.
+func parseScore(fields []string, info *Info) {
+	for i := 0; i+2 < len(fields); i++ {
+		if fields[i] != "score" {
+			continue
+		}
+		n, err := strconv.Atoi(fields[i+2])
+		if err != nil {
+			return
+		}
+		switch fields[i+1] {
+		case "cp":
+			info.CP, info.Mate, info.HasMate = n, 0, false
+		case "mate":
+			info.CP, info.Mate, info.HasMate = 0, n, true
+		}
+		return
+	}
+}
+
+// Find locates a Fairy-Stockfish binary.
+func Find() (string, error) {
+	for _, p := range searchPaths {
+		if path, err := exec.LookPath(p); err == nil {
+			return path, nil
+		}
+	}
+	return "", ErrNotFound
+}
+
+// searchPaths are tried in order. GUI apps launched from Finder don't inherit
+// the shell PATH, so the Homebrew locations are listed explicitly.
+var searchPaths = []string{
+	"fairy-stockfish",
+	"/opt/homebrew/bin/fairy-stockfish",
+	"/usr/local/bin/fairy-stockfish",
+}
+
+// ErrNotFound means no Fairy-Stockfish binary could be located.
+var ErrNotFound = errors.New("fairy-stockfish not found (install with: brew install fairy-stockfish)")
 
 // Close asks the engine to quit and kills it if it does not exit promptly.
 func (e *Engine) Close() error {

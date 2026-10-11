@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import type { Color } from '@lichess-org/chessground/types'
 import { BotMove, GameState, Move, NewGame, Resign, Setup } from '../../wailsjs/go/main/App'
 import type { match } from '../../wailsjs/go/models'
 import { Board } from '../components/Board'
+import { ConfirmButton } from '../components/ConfirmButton'
 import { MoveList } from '../components/MoveList'
 
 export const Route = createFileRoute('/play')({
@@ -87,7 +88,15 @@ function Play() {
   return (
     <div className="flex h-full items-center justify-center gap-8 p-6">
       <div className="aspect-square w-[min(80vh,65vw)]">
-        <Board state={g} orientation={orientation} movableColor={movableColor} onMove={handleMove} />
+        <Board
+          fen={g.fen}
+          lastMove={g.lastMove}
+          check={g.check}
+          dests={g.dests}
+          orientation={orientation}
+          movableColor={movableColor}
+          onMove={handleMove}
+        />
       </div>
 
       <aside className="flex w-64 flex-col gap-5">
@@ -110,18 +119,35 @@ function Play() {
               </p>
               <p className="mt-1 text-neutral-200">{status(state)}</p>
             </div>
-            <MoveList moves={g.moves} outcome={g.outcome} />
+            <MoveList moves={g.moves} outcome={g.outcome} selected={g.moves.length - 1} />
             {state.phase === 'playing' ? (
-              <button onClick={() => run(Resign)} className="self-start text-sm text-neutral-500 hover:text-neutral-200">
-                Resign
-              </button>
+              <div className="self-start">
+                <ConfirmButton
+                  label="Resign"
+                  confirmLabel="Click again to resign"
+                  onConfirm={() => run(Resign)}
+                  className="text-sm text-neutral-500 hover:text-neutral-200"
+                  armedClassName="rounded bg-red-500/20 px-2 py-1 text-sm text-red-300"
+                />
+              </div>
             ) : (
-              <button
-                onClick={() => run(Setup)}
-                className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-900 hover:bg-white"
-              >
-                New game
-              </button>
+              <div className="flex gap-2">
+                {state.gameId && (
+                  <Link
+                    to="/history/$id"
+                    params={{ id: state.gameId }}
+                    className="flex-1 rounded bg-neutral-100 px-3 py-2 text-center text-sm font-medium text-neutral-900 hover:bg-white"
+                  >
+                    Review game
+                  </Link>
+                )}
+                <button
+                  onClick={() => run(Setup)}
+                  className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700"
+                >
+                  New game
+                </button>
+              </div>
             )}
           </>
         )}

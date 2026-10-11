@@ -18,7 +18,10 @@ wails build   # produce build/bin/lochess.app
 - `internal/game` — rules and authoritative game state (notnil/chess)
 - `internal/engine` — UCI subprocess wrapper
 - `internal/bot` — lichess AI levels 1–8 on Fairy-Stockfish
-- `internal/match` — a game plus its mode (local 1v1 or vs bot), level and colours
+- `internal/match` — a game plus its mode (local 1v1 or vs bot), level and colours; saves finished games
+- `internal/history` — finished games as JSON files in `~/Library/Application Support/lochess/games/`
+- `internal/analysis` — engine analysis: move grades (chess.com thresholds), accuracy (lichess formula), key moments
+- `internal/review` — runs and caches analysis on a dedicated full-strength engine
 - `frontend/` — Vite + React + TypeScript + Tailwind v4 (render only, no game logic)
 - `frontend/src/routes/` — TanStack Router file-based routes (`routeTree.gen.ts` is generated)
 - `frontend/wailsjs/` — generated Go bindings (do not edit)

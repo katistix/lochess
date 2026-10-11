@@ -17,6 +17,9 @@ function RootLayout() {
         <Link to="/play" className={navLink} activeProps={{ className: navLinkActive }}>
           Play
         </Link>
+        <Link to="/history" className={navLink} activeProps={{ className: navLinkActive }}>
+          History
+        </Link>
       </nav>
       <main className="flex-1 overflow-auto">
         <Outlet />

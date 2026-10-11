@@ -4,14 +4,15 @@ import (
 	"errors"
 	"testing"
 
-	"lochess/internal/bot"
+	"lochess/internal/engine"
+	"lochess/internal/history"
 )
 
 func TestBotGame(t *testing.T) {
-	m := New()
+	m := New(nil)
 	defer m.Close()
 	s, err := m.Start(Options{Mode: ModeBot, Level: 1, Color: "black"})
-	if errors.Is(err, bot.ErrEngineNotFound) {
+	if errors.Is(err, engine.ErrNotFound) {
 		t.Skip(err)
 	}
 	if err != nil {
@@ -36,7 +37,7 @@ func TestBotGame(t *testing.T) {
 }
 
 func TestPhases(t *testing.T) {
-	m := New()
+	m := New(nil)
 	if s := m.State(); s.Phase != PhaseSetup {
 		t.Fatalf("new match: %s", s.Phase)
 	}
@@ -56,8 +57,32 @@ func TestPhases(t *testing.T) {
 	}
 }
 
+func TestSavesFinishedGame(t *testing.T) {
+	var saved []history.Game
+	m := New(func(g history.Game) error { saved = append(saved, g); return nil })
+
+	m.Start(Options{Mode: ModeLocal})
+	m.Resign() // no moves: aborted, not saved
+	if len(saved) != 0 {
+		t.Fatal("saved an aborted game")
+	}
+
+	m.Start(Options{Mode: ModeLocal})
+	var s State
+	for _, mv := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
+		s, _ = m.Move(mv)
+	}
+	if len(saved) != 1 || s.GameID != saved[0].ID || saved[0].Result != "0-1" || len(saved[0].Plies) != 4 {
+		t.Fatalf("saved %+v, state id %q", saved, s.GameID)
+	}
+	m.State()
+	if len(saved) != 1 {
+		t.Fatal("saved twice")
+	}
+}
+
 func TestLocalNeverBot(t *testing.T) {
-	m := New()
+	m := New(nil)
 	s, err := m.Start(Options{Mode: ModeLocal})
 	if err != nil || s.BotToMove {
 		t.Fatalf("%v %+v", err, s)

@@ -3,9 +3,7 @@ package bot
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 	"time"
 
 	"lochess/internal/engine"
@@ -41,19 +39,8 @@ type Bot struct {
 	eng *engine.Engine
 }
 
-// enginePaths are tried in order. GUI apps launched from Finder don't inherit
-// the shell PATH, so the Homebrew locations are listed explicitly.
-var enginePaths = []string{
-	"fairy-stockfish",
-	"/opt/homebrew/bin/fairy-stockfish",
-	"/usr/local/bin/fairy-stockfish",
-}
-
-// ErrEngineNotFound means no Fairy-Stockfish binary could be located.
-var ErrEngineNotFound = errors.New("fairy-stockfish not found (install with: brew install fairy-stockfish)")
-
 func New() (*Bot, error) {
-	path, err := findEngine()
+	path, err := engine.Find()
 	if err != nil {
 		return nil, err
 	}
@@ -73,15 +60,6 @@ func New() (*Bot, error) {
 		}
 	}
 	return &Bot{eng: eng}, nil
-}
-
-func findEngine() (string, error) {
-	for _, p := range enginePaths {
-		if path, err := exec.LookPath(p); err == nil {
-			return path, nil
-		}
-	}
-	return "", ErrEngineNotFound
 }
 
 // NewGame clears the engine's state from any previous game.

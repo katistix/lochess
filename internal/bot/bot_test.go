@@ -4,11 +4,13 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"lochess/internal/engine"
 )
 
 func TestBotPlaysEveryLevel(t *testing.T) {
 	b, err := New()
-	if err == ErrEngineNotFound {
+	if err == engine.ErrNotFound {
 		t.Skip(err)
 	}
 	if err != nil {

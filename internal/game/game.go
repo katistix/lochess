@@ -21,6 +21,17 @@ type State struct {
 	Moves    []string            `json:"moves"`   // move history in SAN, e.g. ["e4", "e5", "Nf3"]
 }
 
+// Ply is one half-move of a finished or ongoing game.
+type Ply struct {
+	UCI   string `json:"uci"`
+	SAN   string `json:"san"`
+	FEN   string `json:"fen"` // position after the move
+	Check bool   `json:"check"`
+}
+
+// StartFEN is the standard initial position.
+const StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
 // Game is safe for concurrent use; Wails may call bound methods from multiple goroutines.
 type Game struct {
 	mu sync.Mutex
@@ -73,6 +84,20 @@ func (g *Game) Move(uci string) (State, error) {
 		return g.state(), fmt.Errorf("illegal move %q: %w", uci, err)
 	}
 	return g.state(), nil
+}
+
+// Plies returns every move played so far with the position after it.
+func (g *Game) Plies() []Ply {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	moves := g.g.Moves()
+	positions := g.g.Positions()
+	san := g.san()
+	out := make([]Ply, len(moves))
+	for i, m := range moves {
+		out[i] = Ply{UCI: m.String(), SAN: san[i], FEN: positions[i+1].String(), Check: m.HasTag(chess.Check)}
+	}
+	return out
 }
 
 // san returns the move history in standard algebraic notation.
