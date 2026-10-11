@@ -17,18 +17,24 @@ import { GRADES, GRADE_ORDER, moveLabel } from '../lib/grades'
 
 export const Route = createFileRoute('/history/$id')({
   component: Review,
+  // ?ply=N opens the review at that move (0 = start position).
+  validateSearch: (search: Record<string, unknown>): { ply?: number } => {
+    const ply = Number(search.ply)
+    return Number.isInteger(ply) && ply > 0 ? { ply } : {}
+  },
 })
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 function Review() {
   const { id } = Route.useParams()
+  const search = Route.useSearch()
   const navigate = useNavigate()
   const [game, setGame] = useState<history.Game | null>(null)
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<[number, number] | null>(null)
   // ply = number of moves played on the shown position; 0 is the start.
-  const [ply, setPly] = useState(0)
+  const [ply, setPly] = useState(search.ply ?? 0)
 
   useEffect(() => {
     const off = EventsOn('analysis:progress', (gid: string, done: number, total: number) => {
@@ -37,6 +43,7 @@ function Review() {
     GetGame(id)
       .then((g) => {
         setGame(g)
+        setPly((p) => Math.min(p, g.plies.length))
         if (!g.analysis) return AnalyzeGame(id).then(setGame)
       })
       .catch((e) => setError(errorText(e)))
