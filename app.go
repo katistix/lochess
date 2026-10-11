@@ -26,11 +26,10 @@ type App struct {
 }
 
 func NewApp() (*App, error) {
-	dir, err := os.UserConfigDir()
+	root, err := dataDir()
 	if err != nil {
 		return nil, err
 	}
-	root := filepath.Join(dir, "lochess")
 	store, err := history.Open(filepath.Join(root, "games"))
 	if err != nil {
 		return nil, fmt.Errorf("open game history: %w", err)
@@ -38,6 +37,19 @@ func NewApp() (*App, error) {
 	a := &App{history: store, review: review.New(store), settings: settings.Open(filepath.Join(root, "settings.json"))}
 	a.match = match.New(a.saveGame, filepath.Join(root, "current.json"))
 	return a, nil
+}
+
+// dataDir is where games and settings live: LOCHESS_DATA_DIR if set (handy for
+// testing and demos), else ~/Library/Application Support/lochess on macOS.
+func dataDir() (string, error) {
+	if dir := os.Getenv("LOCHESS_DATA_DIR"); dir != "" {
+		return dir, nil
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "lochess"), nil
 }
 
 // saveGame stores a finished game and starts analysing it in the background,
