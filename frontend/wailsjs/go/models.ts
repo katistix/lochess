@@ -296,6 +296,9 @@ export namespace settings {
 	    pieces: string;
 	    sound: boolean;
 	    volume: number;
+	    mode: string;
+	    level: number;
+	    color: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -307,6 +310,9 @@ export namespace settings {
 	        this.pieces = source["pieces"];
 	        this.sound = source["sound"];
 	        this.volume = source["volume"];
+	        this.mode = source["mode"];
+	        this.level = source["level"];
+	        this.color = source["color"];
 	    }
 	}
 

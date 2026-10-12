@@ -23,9 +23,11 @@ const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8]
 function Play() {
   const [state, setState] = useState<match.State | null>(null)
   const [error, setError] = useState('')
-  const [mode, setMode] = useState<Mode>('bot')
-  const [level, setLevel] = useState(1)
-  const [color, setColor] = useState<ColorChoice>('white')
+  // The setup choices are saved with the settings so they survive restarts.
+  const { settings, update } = useSettings()
+  const mode = settings.mode as Mode
+  const level = settings.level
+  const color = settings.color as ColorChoice
   // A pawn move to the last rank waiting for the user to pick a piece.
   const [promoting, setPromoting] = useState<{ from: string; to: string } | null>(null)
 
@@ -50,7 +52,6 @@ function Play() {
 
   // Sounds follow Go's state: a new move, a game starting or ending.
   // The first state after opening the page is silent.
-  const { settings } = useSettings()
   const prev = useRef<match.State | null>(null)
   useEffect(() => {
     const before = prev.current
@@ -159,11 +160,11 @@ function Play() {
         {setup ? (
           <SetupPanel
             mode={mode}
-            setMode={setMode}
+            setMode={(m) => update({ mode: m })}
             level={level}
-            setLevel={setLevel}
+            setLevel={(l) => update({ level: l })}
             color={color}
-            setColor={setColor}
+            setColor={(c) => update({ color: c })}
             hint={canStartByMoving ? 'Make a move to start, or' : undefined}
             onStart={startGame}
           />
