@@ -15,7 +15,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     GetSettings()
       .then(setSettings)
-      .catch(() => setSettings({ board: DEFAULT_BOARD, pieces: DEFAULT_PIECES, sound: true, volume: 70 }))
+      .catch(() =>
+        setSettings({
+          board: DEFAULT_BOARD,
+          pieces: DEFAULT_PIECES,
+          sound: true,
+          volume: 70,
+          mode: 'bot',
+          level: 1,
+          color: 'white',
+        }),
+      )
   }, [])
 
   useEffect(() => {

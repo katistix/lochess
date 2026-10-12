@@ -6,19 +6,41 @@ import (
 	"errors"
 	"os"
 	"sync"
+
+	"lochess/internal/bot"
 )
 
-// Settings are display preferences. Values are theme IDs the frontend
-// defines; unknown IDs fall back to defaults there.
+// Settings are user preferences. Board and Pieces are theme IDs the
+// frontend defines; unknown IDs fall back to defaults there. Mode, Level
+// and Color remember the last game setup.
 type Settings struct {
 	Board  string `json:"board"`
 	Pieces string `json:"pieces"`
 	Sound  bool   `json:"sound"`
 	Volume int    `json:"volume"` // 0-100
+	Mode   string `json:"mode"`   // "bot" | "local"
+	Level  int    `json:"level"`  // bot level
+	Color  string `json:"color"`  // "white" | "random" | "black"
 }
 
 func Default() Settings {
-	return Settings{Board: "brown", Pieces: "cburnett", Sound: true, Volume: 70}
+	return Settings{Board: "brown", Pieces: "cburnett", Sound: true, Volume: 70, Mode: "bot", Level: bot.MinLevel, Color: "white"}
+}
+
+// clamp replaces out-of-range values with defaults.
+func clamp(v Settings) Settings {
+	d := Default()
+	v.Volume = max(0, min(100, v.Volume))
+	if v.Mode != "bot" && v.Mode != "local" {
+		v.Mode = d.Mode
+	}
+	if v.Level < bot.MinLevel || v.Level > bot.MaxLevel {
+		v.Level = d.Level
+	}
+	if v.Color != "white" && v.Color != "random" && v.Color != "black" {
+		v.Color = d.Color
+	}
+	return v
 }
 
 // Store is safe for concurrent use.
@@ -51,8 +73,7 @@ func (s *Store) Load() Settings {
 	if out.Pieces == "" {
 		out.Pieces = Default().Pieces
 	}
-	out.Volume = max(0, min(100, out.Volume))
-	return out
+	return clamp(out)
 }
 
 func (s *Store) Save(v Settings) error {
@@ -61,7 +82,7 @@ func (s *Store) Save(v Settings) error {
 	if v.Board == "" || v.Pieces == "" {
 		return errors.New("settings: board and pieces are required")
 	}
-	v.Volume = max(0, min(100, v.Volume))
+	v = clamp(v)
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
