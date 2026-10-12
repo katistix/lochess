@@ -8,18 +8,17 @@ body {
   background-color: var(--color-neutral-900);
 }
 
-/* Captured-piece icons next to the board, using chessground's piece images.
-   Pieces of one kind overlap like a fanned hand. */
+/* Captured-piece icons next to the board: chessground's piece images flattened
+   to grey silhouettes, as on chess.com, so both colours read on the dark
+   background. brightness(0) turns the shape black, invert(64%) makes it
+   neutral-400. Pieces of one kind overlap like a fanned hand. */
 .cg-wrap.captured piece {
   position: static;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   will-change: auto;
+  filter: brightness(0) invert(64%);
 }
 .cg-wrap.captured piece + piece {
-  margin-left: -10px;
-}
-/* Black pieces vanish on the dark background; a thin light outline keeps them readable. */
-.cg-wrap.captured piece.black {
-  filter: drop-shadow(0 0 0.6px var(--color-neutral-300)) drop-shadow(0 0 0.6px var(--color-neutral-300));
+  margin-left: -11px;
 }
