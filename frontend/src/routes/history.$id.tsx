@@ -9,6 +9,7 @@ import { Board } from '../components/Board'
 import { ConfirmButton } from '../components/ConfirmButton'
 import { GradeBadge, SquareBadge } from '../components/GradeBadge'
 import { MoveList, type MoveMark } from '../components/MoveList'
+import { PlayerBar } from '../components/PlayerBar'
 import { errorText } from '../lib/errors'
 import { useSettings } from '../lib/settings'
 import { moveSound, playSound } from '../lib/sound'
@@ -108,6 +109,15 @@ function Review() {
   const p = ply > 0 ? game.plies[ply - 1] : undefined
   const orientation = (game.mode === 'bot' ? game.humanColor : 'white') as Color
   const evalNow = analysis?.evals[ply]
+  const fen = p?.fen ?? START_FEN
+  const top: Color = orientation === 'white' ? 'black' : 'white'
+  const vsBot = game.mode === 'bot'
+  const botLabel = opponentLabel(game)
+  function bar(c: Color) {
+    let label = c === 'white' ? 'White' : 'Black'
+    if (vsBot) label = c === orientation ? 'You' : botLabel
+    return <PlayerBar fen={fen} color={c} label={label} />
+  }
 
   function remove() {
     DeleteGame(id)
@@ -118,18 +128,22 @@ function Review() {
   return (
     <div className="flex h-full items-center justify-center gap-6 p-6">
       <EvalBar win={evalNow?.win} text={evalNow?.text} orientation={orientation} />
-      <div className="relative aspect-square w-[min(80vh,58vw)]">
-        {p && grade && <SquareBadge square={p.uci.slice(2, 4)} grade={grade.class} orientation={orientation} />}
-        <Board
-          fen={p?.fen ?? START_FEN}
-          lastMove={p ? [p.uci.slice(0, 2), p.uci.slice(2, 4)] : undefined}
-          check={p?.check}
-          orientation={orientation}
-          shapes={shapes}
-        />
+      <div className="flex flex-col gap-1">
+        {bar(top)}
+        <div className="relative aspect-square w-[min(72vh,58vw)]">
+          {p && grade && <SquareBadge square={p.uci.slice(2, 4)} grade={grade.class} orientation={orientation} />}
+          <Board
+            fen={fen}
+            lastMove={p ? [p.uci.slice(0, 2), p.uci.slice(2, 4)] : undefined}
+            check={p?.check}
+            orientation={orientation}
+            shapes={shapes}
+          />
+        </div>
+        {bar(orientation)}
       </div>
 
-      <aside className="flex h-[min(80vh,58vw)] w-72 flex-col gap-4">
+      <aside className="flex h-[min(72vh,58vw)] w-72 flex-col gap-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-neutral-500">
             {opponentLabel(game)} · {formatDate(game.playedAt)}
@@ -308,7 +322,7 @@ function EvalBar({ win, text, orientation }: { win?: number; text?: string; orie
   // The number sits on the side that is ahead, in a colour readable on it.
   const whiteAhead = white >= 50
   return (
-    <div className={`relative h-[min(80vh,58vw)] w-4 overflow-hidden rounded-sm ${topColor} ring-1 ring-neutral-700`}>
+    <div className={`relative h-[min(72vh,58vw)] w-4 overflow-hidden rounded-sm ${topColor} ring-1 ring-neutral-700`}>
       <div className={`absolute bottom-0 w-full transition-all duration-300 ${bottomColor}`} style={{ height: `${fromBottom}%` }} />
       {text && (
         <span
