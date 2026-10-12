@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* The app fills the window: stop macOS's rubber-band bounce, and keep the
+   page dark so nothing white shows behind it. */
+html,
+body {
+  overscroll-behavior: none;
+  background-color: var(--color-neutral-900);
+}
