@@ -7,3 +7,15 @@ body {
   overscroll-behavior: none;
   background-color: var(--color-neutral-900);
 }
+
+/* Captured-piece icons next to the board, using chessground's piece images.
+   Pieces of one kind overlap like a fanned hand. */
+.cg-wrap.captured piece {
+  position: static;
+  width: 18px;
+  height: 18px;
+  will-change: auto;
+}
+.cg-wrap.captured piece + piece {
+  margin-left: -10px;
+}

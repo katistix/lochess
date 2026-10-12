@@ -6,6 +6,7 @@ import type { match } from '../../wailsjs/go/models'
 import { Board } from '../components/Board'
 import { ConfirmButton } from '../components/ConfirmButton'
 import { MoveList } from '../components/MoveList'
+import { PlayerBar } from '../components/PlayerBar'
 import { PromotionPicker } from '../components/PromotionPicker'
 import { errorText } from '../lib/errors'
 import { useSettings } from '../lib/settings'
@@ -133,27 +134,42 @@ function Play() {
   if (setup && canStartByMoving) movableColor = 'white'
   if (state.phase === 'playing' && !state.botToMove && !promoting) movableColor = g.turn as Color
 
+  // Player strips above and below the board; the dot marks whose move it is.
+  const top: Color = orientation === 'white' ? 'black' : 'white'
+  const vsBot = setup ? mode === 'bot' : state.mode === 'bot'
+  const botLabel = `Stockfish level ${setup ? level : state.level}`
+  const playing = state.phase === 'playing'
+  function bar(c: Color) {
+    let label = c === 'white' ? 'White' : 'Black'
+    if (vsBot) label = c === orientation ? 'You' : botLabel
+    return <PlayerBar fen={g.fen} color={c} label={label} active={playing && g.turn === c} />
+  }
+
   return (
     <div className="flex h-full items-center justify-center gap-8 p-6">
-      <div className="relative aspect-square w-[min(80vh,65vw)]">
-        {promoting && (
-          <PromotionPicker
-            square={promoting.to}
-            color={g.turn as Color}
+      <div className="flex flex-col gap-1">
+        {bar(top)}
+        <div className="relative aspect-square w-[min(72vh,65vw)]">
+          {promoting && (
+            <PromotionPicker
+              square={promoting.to}
+              color={g.turn as Color}
+              orientation={orientation}
+              onPick={pickPromotion}
+              onCancel={cancelPromotion}
+            />
+          )}
+          <Board
+            fen={g.fen}
+            lastMove={g.lastMove}
+            check={g.check}
+            dests={g.dests}
             orientation={orientation}
-            onPick={pickPromotion}
-            onCancel={cancelPromotion}
+            movableColor={movableColor}
+            onMove={handleMove}
           />
-        )}
-        <Board
-          fen={g.fen}
-          lastMove={g.lastMove}
-          check={g.check}
-          dests={g.dests}
-          orientation={orientation}
-          movableColor={movableColor}
-          onMove={handleMove}
-        />
+        </div>
+        {bar(orientation)}
       </div>
 
       <aside className="flex w-64 flex-col gap-5">
