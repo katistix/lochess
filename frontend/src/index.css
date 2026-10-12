@@ -19,3 +19,7 @@ body {
 .cg-wrap.captured piece + piece {
   margin-left: -10px;
 }
+/* Black pieces vanish on the dark background; a thin light outline keeps them readable. */
+.cg-wrap.captured piece.black {
+  filter: drop-shadow(0 0 0.6px var(--color-neutral-300)) drop-shadow(0 0 0.6px var(--color-neutral-300));
+}
